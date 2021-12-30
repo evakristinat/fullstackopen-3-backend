@@ -1,125 +1,156 @@
-require('dotenv').config();
-const express = require('express');
-const morgan = require('morgan');
-const cors = require('cors');
-const Person = require('./models/person');
+require('dotenv').config()
+const express = require('express')
+const morgan = require('morgan')
+// const cors = require('cors');
+const Person = require('./models/person')
 
-const app = express();
+const app = express()
 
-app.use(express.static('build'));
-app.use(express.json());
+app.use(express.static('build'))
+app.use(express.json())
 
-morgan.token('req', (req) => {
-  const body = JSON.stringify(req.body);
-  if (body !== '{}') {
-    return body;
-  } else {
-    return '- no request body';
+//Virheitä käsittelevä middleware väärässä muodossa syötetylle IDlle.
+const errorHandler = (error, req, res, next) => {
+  console.log(error.message)
+
+  if (error.name === 'CastError') {
+    // 400 - Bad Request ja kuvaava viesti, kun muoto on väärä
+    return res.status(400).send({ error: 'malformatted id' })
+  } else if (error.name === 'ValidationError') {
+    return res.status(400).send({ error: error.message })
+  } else if (error.name === 'MongoServerError') {
+    return res.status(400).send({ error: error.message })
   }
-});
 
+  next(error)
+}
+
+//Custom 'req'-token morganille, joka näyttää pyynnön bodyn logissa, mikäli sellainen on.
+morgan.token('req', (req) => {
+  const body = JSON.stringify(req.body)
+  if (body !== '{}') {
+    return body
+  } else {
+    return '- no request body'
+  }
+})
+
+//Custom token lisätty logiin viimeiseksi ':req'
 app.use(
   morgan(':method :url :status :res[content-length] - :response-time ms :req')
-);
+)
 
-app.use(cors());
+// Cors oli käytössä kehitysvaiheessa, mutta nyt tarpeeton.
+// app.use(cors());
 
 // const generateId = () => {
 //   return Math.floor(Math.random() * 100);
 // };
 
-// let persons = [
-//   {
-//     name: 'Arto Hellas',
-//     number: '040-123456',
-//     id: 1,
-//   },
-//   {
-//     name: 'Ada Lovelace',
-//     number: '39-44-5323523',
-//     id: 2,
-//   },
-//   {
-//     name: 'Dan Abramov',
-//     number: '12-43-234345',
-//     id: 3,
-//   },
-//   {
-//     name: 'Mary Poppendieck',
-//     number: '39-23-6423122',
-//     id: 4,
-//   },
-// ];
-
+//Infon ja päivämäärän näyttäminen /info reitistä
 app.get('/info', (req, res) => {
-  res.send(`<p>Phonebook has ${Person.length} contacts.</p><p>${Date()}</p>`);
-});
+  res.send(`<p>Phonebook has ${Person.length} contacts.</p><p>${Date()}</p>`)
+})
 
-app.get('/api/persons', (req, res) => {
-  Person.find()
+//Kaikkien tietojen haku rajapinnasta
+app.get('/api/persons', (req, res, next) => {
+  Person.find({})
     .then((people) => res.json(people))
-    .catch((error) => {
-      console.log(error);
-      res.status(500).end();
-    });
-});
+    .catch((error) => next(error))
+})
 
-app.get('/api/persons/:id', (req, res) => {
-  Person.findById(req.params.id)
-    .then((person) => {
-      res.json(person);
-    })
-    .catch((error) => {
-      res.status(404);
-    });
-  // const id = Number(req.params.id);
+//Tietyn henkilön haku rajapinnasta
+app.get('/api/persons/:id', (req, res, next) => {
+  //vanha toteutus ennen tietokantaa:
   // const person = persons.find((person) => person.id === id);
 
-  // if (person) {
-  //   res.json(person);
-  // } else {
-  //   res.status(404).end();
-  // }
-});
+  Person.findById(req.params.id)
+    .then((person) => {
+      if (person) {
+        res.json(person)
+      } else {
+        res.status(404).end()
+      }
+    })
+    .catch((error) => next(error))
+})
 
-app.post('/api/persons', (req, res) => {
-  const body = req.body;
-  // const findName = persons.find((person) => person.name === body.name);
-  // const findName = Person.findOne((person) => person.name === body.name);
-  if (!body.name || !body.number) {
-    return res.status(400).json({
-      error: 'name or number missing',
-    });
-  // } else if (findName) {
+//Uuden henkilön lisääminen sovellukseen
+app.post('/api/persons', (req, res, next) => {
+  const body = req.body
+  //Ensin tarkistetaan onko pyynnöllä nimi ja numero. Mikäli kumpikaan puuttuu, mitään ei tehdä.
+  // if (!body.name || !body.number) {
   //   return res.status(400).json({
-  //     error: 'name must be unique',
+  //     error: 'name or number missing',
   //   });
+  // } else {
+  //Jos kaikki oleellinen löytyy pyynnöstä, tarkistetaan löytyykö nimeä tietokannasta.
+  // Person.findOne({ name: body.name })
+  //   .exec()
+  //   .then((person) => {
+  //     //Mikäli vastaus ei ole null, nimi löytyy jo kannasta, joten palautetaan 400 - Bad Request.
+  //     if (person !== null) {
+  //       return res.status(400).json({ error: 'name must be unique' });
+  //     } else {
+  //Vasta kun tiedetään, että vastaus on null ja oleelliset tiedot löytyy, luodaan uusi henkilö.
+  const newPerson = new Person({
+    name: body.name,
+    number: body.number,
+    // id: body.id || generateId(),
+  })
+  newPerson
+    .save()
+    .then((savedPerson) => savedPerson.toJSON())
+    .then((savedPersonInJSON) => res.json(savedPersonInJSON))
+    .catch((error) => next(error))
+  // }
+})
+// .catch((error) => next(error));
+// }
+// });
+
+app.put('/api/persons/:id', (req, res, next) => {
+  const body = req.body
+
+  //huom. Person konstruktorilla luotu olio ei käy findByIdAndUpdaten parametriksi
+  const person = {
+    name: body.name,
+    number: body.number,
   }
 
-  const person = new Person({
-    name: body.name,
-    number: Number(body.number),
-    // id: body.id || generateId(),
-  });
+  //ellei {new: true} parametriä olisi lisätty palautettaisiin muutosta edeltävä tila
+  Person.findByIdAndUpdate(req.params.id, person, { new: true })
+    .then((updatedPerson) => {
+      res.json(updatedPerson)
+    })
+    .catch((error) => next(error))
+})
 
-  // persons = persons.concat(person);
-  person.save().then((savedPerson) => {
-    res.json(savedPerson);
-  });
-
-  // res.json(person);
-});
-
-app.delete('/api/persons/:id', (req, res) => {
-  const id = Number(req.params.id);
+//Henkilön poistaminen sovelluksesta (ja tietokannasta)
+app.delete('/api/persons/:id', (req, res, next) => {
+  // Vanha toteutus ennen tietokannan lisäystä:
   // persons = persons.filter((person) => person.id !== id);
 
-  res.status(204).end();
-});
+  Person.findByIdAndRemove(req.params.id)
+    .then(() => {
+      //204 - No Content kertoo että pyyntö on onnistunut, eli tieto on poissa, mutta sivulta ei tarvitse poistua.
+      res.status(204).end()
+    })
+    .catch((error) => next(error))
+})
 
-const PORT = process.env.PORT;
+//Mikäli tuntematon endpoint syötetään urliin, palautetaan 404 - Page Not Found ja näytetään viesti "unknown endpoint"
+const unkownEndPoint = (req, res) => {
+  res.status(404).send({ error: 'unknown endpoint' })
+}
+
+app.use(unkownEndPoint)
+
+app.use(errorHandler)
+
+const PORT = process.env.PORT
 
 app.listen(PORT),
-  () => {
-    console.log(`Server running on port ${PORT}`);
-  };
+() => {
+  console.log(`Server running on port ${PORT}`)
+}
