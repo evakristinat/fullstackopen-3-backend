@@ -16,8 +16,10 @@ const errorHandler = (error, req, res, next) => {
   if (error.name === 'CastError') {
     // 400 - Bad Request ja kuvaava viesti, kun muoto on väärä
     return res.status(400).send({ error: 'malformatted id' })
+    // tai validointi ei onnistu
   } else if (error.name === 'ValidationError') {
     return res.status(400).send({ error: error.message })
+    // tai Mongoosen unique validator heittää virheen
   } else if (error.name === 'MongoServerError') {
     return res.status(400).send({ error: error.message })
   }
@@ -43,6 +45,7 @@ app.use(
 // Cors oli käytössä kehitysvaiheessa, mutta nyt tarpeeton.
 // app.use(cors());
 
+// Ennen Mongoa käytetty ID, tuplien tarkastus ei tullut testauksessa tarpeelliseksi.
 // const generateId = () => {
 //   return Math.floor(Math.random() * 100);
 // };
@@ -78,21 +81,6 @@ app.get('/api/persons/:id', (req, res, next) => {
 //Uuden henkilön lisääminen sovellukseen
 app.post('/api/persons', (req, res, next) => {
   const body = req.body
-  //Ensin tarkistetaan onko pyynnöllä nimi ja numero. Mikäli kumpikaan puuttuu, mitään ei tehdä.
-  // if (!body.name || !body.number) {
-  //   return res.status(400).json({
-  //     error: 'name or number missing',
-  //   });
-  // } else {
-  //Jos kaikki oleellinen löytyy pyynnöstä, tarkistetaan löytyykö nimeä tietokannasta.
-  // Person.findOne({ name: body.name })
-  //   .exec()
-  //   .then((person) => {
-  //     //Mikäli vastaus ei ole null, nimi löytyy jo kannasta, joten palautetaan 400 - Bad Request.
-  //     if (person !== null) {
-  //       return res.status(400).json({ error: 'name must be unique' });
-  //     } else {
-  //Vasta kun tiedetään, että vastaus on null ja oleelliset tiedot löytyy, luodaan uusi henkilö.
   const newPerson = new Person({
     name: body.name,
     number: body.number,
@@ -103,12 +91,9 @@ app.post('/api/persons', (req, res, next) => {
     .then((savedPerson) => savedPerson.toJSON())
     .then((savedPersonInJSON) => res.json(savedPersonInJSON))
     .catch((error) => next(error))
-  // }
 })
-// .catch((error) => next(error));
-// }
-// });
 
+//Henkilön päivitys
 app.put('/api/persons/:id', (req, res, next) => {
   const body = req.body
 
