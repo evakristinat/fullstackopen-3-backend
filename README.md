@@ -1,6 +1,6 @@
 # fullstackopen 
 
-This is the backend execution for assignment 3. 
+This is the backend execution for assignment 3 Contacts list using Express and Node.
 
 [Check out the frontend for this backend here](https://github.com/evakristinat/fullstackopen-3-frontend)
 
